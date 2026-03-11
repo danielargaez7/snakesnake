@@ -92,7 +92,8 @@ namespace BellyFull
         {
             if (GameManager.Instance == null) return;
 
-            // Flee from BOTH snakes on the shared field
+            // Only flee from snakes that would want to eat this object type
+            // Balls flee from Addition snakes, hedgehogs flee from Subtraction snakes
             Vector2 myPos = transform.position;
             Vector2 totalFleeDir = Vector2.zero;
             bool anyClose = false;
@@ -101,6 +102,11 @@ namespace BellyFull
             {
                 SnakeController snake = GameManager.Instance.GetSnake((PlayerIndex)i);
                 if (snake == null) continue;
+
+                // Skip snakes that don't eat this object type
+                bool wouldEat = (objectType == FieldObjectType.Ball && snake.CurrentEquationType == EquationType.Addition)
+                             || (objectType == FieldObjectType.Hedgehog && snake.CurrentEquationType == EquationType.Subtraction);
+                if (!wouldEat) continue;
 
                 Vector2 snakePos = snake.transform.position;
                 float dist = Vector2.Distance(myPos, snakePos);

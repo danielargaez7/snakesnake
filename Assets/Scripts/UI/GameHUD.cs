@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -7,7 +8,7 @@ namespace BellyFull
     /// <summary>
     /// HUD controller for one player on the shared screen.
     /// P1 displays top-left, P2 displays top-right.
-    /// Shows belly count, equation, energy bar, crowns, and blast UI.
+    /// Shows equation (e.g. "3+2=2"), crowns, and blast UI.
     /// One instance per player.
     /// </summary>
     public class GameHUD : MonoBehaviour
@@ -15,15 +16,8 @@ namespace BellyFull
         [Header("Identity")]
         [SerializeField] private PlayerIndex playerIndex;
 
-        [Header("Belly Display")]
-        [SerializeField] private TextMeshProUGUI bellyCountText;
-
         [Header("Equation Display")]
         [SerializeField] private TextMeshProUGUI equationText;
-
-        [Header("Energy Bar")]
-        [SerializeField] private Image energyBarFill;
-        [SerializeField] private Image energyBarGlow;
 
         [Header("Crown Display")]
         [SerializeField] private GameObject[] crownIcons = new GameObject[3];
@@ -36,9 +30,18 @@ namespace BellyFull
         [Header("Game Over")]
         [SerializeField] private GameObject winBanner;
 
+        // Tracked equation state
+        private int _startBelly;
+        private int _target;
+        private string _operator;
+        private int _operand;
+        private int _currentBelly;
+        private bool _celebrating;
+
+        private static readonly string[] CelebrationWords = { "YES!", "NICE!", "WOO!", "YAY!", "COOL!" };
+
         private void Start()
         {
-            // Hide optional elements
             if (blastOverlay != null) blastOverlay.SetActive(false);
             if (winBanner != null) winBanner.SetActive(false);
             if (countdownText != null) countdownText.gameObject.SetActive(false);
@@ -47,7 +50,6 @@ namespace BellyFull
 
             GameEvents.OnEquationGenerated += HandleEquationGenerated;
             GameEvents.OnObjectEaten += HandleObjectEaten;
-            GameEvents.OnEnergyBarChanged += HandleEnergyBarChanged;
             GameEvents.OnCrownAwarded += HandleCrownAwarded;
             GameEvents.OnBallBlastCountdown += HandleBlastCountdown;
             GameEvents.OnBallBlastStarted += HandleBlastStarted;
@@ -60,7 +62,6 @@ namespace BellyFull
         {
             GameEvents.OnEquationGenerated -= HandleEquationGenerated;
             GameEvents.OnObjectEaten -= HandleObjectEaten;
-            GameEvents.OnEnergyBarChanged -= HandleEnergyBarChanged;
             GameEvents.OnCrownAwarded -= HandleCrownAwarded;
             GameEvents.OnBallBlastCountdown -= HandleBlastCountdown;
             GameEvents.OnBallBlastStarted -= HandleBlastStarted;
@@ -71,7 +72,6 @@ namespace BellyFull
 
         private void Update()
         {
-            // Update blast eat count in real time during Ball Blast
             if (BallBlastManager.Instance != null && BallBlastManager.Instance.IsBlasting)
             {
                 var snake = GameManager.Instance.GetSnake(playerIndex);
@@ -86,38 +86,95 @@ namespace BellyFull
         {
             if (player != playerIndex) return;
 
-            if (bellyCountText != null)
-                bellyCountText.text = current.ToString();
+            _startBelly = current;
+            _target = target;
+            _currentBelly = current;
+            _operand = Mathf.Abs(target - current);
+            _operator = type == EquationType.Addition ? "+" : "-";
 
-            if (equationText != null)
-            {
-                int operand = Mathf.Abs(target - current);
-                string op = type == EquationType.Addition ? "+" : "-";
-                equationText.text = $"{op}{operand}";
-            }
+            if (!_celebrating)
+                UpdateEquationDisplay();
         }
 
         private void HandleObjectEaten(PlayerIndex player, FieldObjectType type, int bellyCount)
         {
             if (player != playerIndex) return;
-            if (bellyCountText != null)
-                bellyCountText.text = bellyCount.ToString();
+            _currentBelly = bellyCount;
+
+            if (_celebrating) return;
+
+            UpdateEquationDisplay();
+
+            // Check if just solved
+            if (_currentBelly == _target)
+            {
+                StartCoroutine(SolveCelebration());
+            }
         }
 
-        private void HandleEnergyBarChanged(PlayerIndex player, float fill)
+        private void UpdateEquationDisplay()
         {
-            if (player != playerIndex) return;
-            if (energyBarFill != null)
-                energyBarFill.fillAmount = fill;
+            if (equationText == null) return;
 
-            // Pulse glow as bar approaches full
-            if (energyBarGlow != null)
+            bool correct = _currentBelly == _target;
+            string answerColor = correct ? "#00CC00" : "#CC0000";
+
+            equationText.text = $"{_startBelly}{_operator}{_operand}=<color={answerColor}><size=150%>{_currentBelly}</size></color>";
+        }
+
+        private IEnumerator SolveCelebration()
+        {
+            _celebrating = true;
+
+            if (equationText == null) { _celebrating = false; yield break; }
+
+            var rt = equationText.GetComponent<RectTransform>();
+            Vector3 originalScale = rt != null ? rt.localScale : Vector3.one;
+
+            // Flash the correct answer green
+            equationText.text = $"<color=#00CC00><size=150%>{_startBelly}{_operator}{_operand}={_target}</size></color>";
+
+            // Scale punch up
+            if (rt != null)
             {
-                float glowAlpha = fill > 0.7f ? Mathf.PingPong(Time.time * 3f, 1f) * (fill - 0.7f) / 0.3f : 0f;
-                var c = energyBarGlow.color;
-                c.a = glowAlpha;
-                energyBarGlow.color = c;
+                float elapsed = 0f;
+                float punchDuration = 0.2f;
+                while (elapsed < punchDuration)
+                {
+                    elapsed += Time.deltaTime;
+                    float t = elapsed / punchDuration;
+                    float scale = 1f + 0.4f * Mathf.Sin(t * Mathf.PI);
+                    rt.localScale = originalScale * scale;
+                    yield return null;
+                }
             }
+
+            // Show fun word
+            string word = CelebrationWords[Random.Range(0, CelebrationWords.Length)];
+            equationText.text = $"<color=#FFD700><size=200%>{word}</size></color>";
+
+            // Bounce the word
+            if (rt != null)
+            {
+                float elapsed = 0f;
+                float bounceDuration = 0.5f;
+                while (elapsed < bounceDuration)
+                {
+                    elapsed += Time.deltaTime;
+                    float t = elapsed / bounceDuration;
+                    float scale = 1f + 0.2f * Mathf.Sin(t * Mathf.PI * 2f) * (1f - t);
+                    rt.localScale = originalScale * scale;
+                    yield return null;
+                }
+            }
+
+            // Brief pause on the word
+            yield return new WaitForSeconds(0.3f);
+
+            // Restore scale and show new equation
+            if (rt != null) rt.localScale = originalScale;
+            _celebrating = false;
+            UpdateEquationDisplay();
         }
 
         private void HandleCrownAwarded(PlayerIndex player, int totalCrowns)
@@ -139,7 +196,7 @@ namespace BellyFull
             }
         }
 
-        private System.Collections.IEnumerator CountdownRoutine()
+        private IEnumerator CountdownRoutine()
         {
             countdownText.text = "3";
             yield return new WaitForSeconds(1f);

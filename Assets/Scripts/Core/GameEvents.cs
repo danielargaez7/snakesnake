@@ -29,12 +29,12 @@ namespace BellyFull
         public static event Action<PlayerIndex> OnBellyAcheEnded;
         public static void BellyAcheEnded(PlayerIndex p) => OnBellyAcheEnded?.Invoke(p);
 
-        // Energy Bar
-        public static event Action<PlayerIndex, float> OnEnergyBarChanged; // player, fill 0-1
-        public static void EnergyBarChanged(PlayerIndex p, float fill) => OnEnergyBarChanged?.Invoke(p, fill);
+        // Energy Bar (shared between both players)
+        public static event Action<float> OnEnergyBarChanged; // fill 0-1
+        public static void EnergyBarChanged(float fill) => OnEnergyBarChanged?.Invoke(fill);
 
-        public static event Action<PlayerIndex> OnEnergyBarFull;
-        public static void EnergyBarFull(PlayerIndex p) => OnEnergyBarFull?.Invoke(p);
+        public static event Action OnEnergyBarFull;
+        public static void EnergyBarFull() => OnEnergyBarFull?.Invoke();
 
         // Ball Blast
         public static event Action OnBallBlastCountdown;

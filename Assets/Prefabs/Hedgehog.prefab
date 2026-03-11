@@ -97,6 +97,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 71632d65ddaa741fd82abadc45d3e0a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  objectType: 0
+  objectType: 1
   dodgeSpeed: 6
   dodgeDetectRadius: 2.5
+  separationRadius: 0.7
+  separationForce: 3

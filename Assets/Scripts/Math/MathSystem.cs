@@ -98,21 +98,9 @@ namespace BellyFull
                     : EquationType.Addition;
                 _equationsSinceSwitch = 0;
                 GameManager.Instance.SetEquationType(_currentSyncedType);
-
-                // Update dodge behavior for new type
-                var field = GameManager.Instance.GetField();
-                if (field != null)
-                {
-                    var dodge = field.GetComponent<DodgeSystem>();
-                    if (dodge != null)
-                        dodge.ApplyDodgeBehavior(_currentSyncedType);
-                }
-
-                // Regenerate equation for the OTHER player too (new type)
-                PlayerIndex other = player == PlayerIndex.Player1 ? PlayerIndex.Player2 : PlayerIndex.Player1;
-                GenerateEquation(other);
             }
 
+            // Only regenerate for the player who just solved — never touch the other player's equation
             GenerateEquation(player);
         }
 

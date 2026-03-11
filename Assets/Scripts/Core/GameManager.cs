@@ -94,7 +94,7 @@ namespace BellyFull
         {
         }
 
-        private void HandleEnergyBarFull(PlayerIndex triggeringPlayer)
+        private void HandleEnergyBarFull()
         {
             if (CurrentState != GameState.NormalPlay) return;
             SetState(GameState.PreBlast);

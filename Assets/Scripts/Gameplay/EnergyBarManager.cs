@@ -3,22 +3,22 @@ using UnityEngine;
 namespace BellyFull
 {
     /// <summary>
-    /// Manages energy bar fill state for each player.
-    /// Passive fill + active boost on equation solve.
-    /// When either bar fills, triggers Ball Blast for both players.
+    /// Manages a single shared energy bar for both players.
+    /// Passive fill + active boost on equation solve from either player.
+    /// When the bar fills, triggers Ball Blast.
     /// </summary>
     public class EnergyBarManager : MonoBehaviour
     {
         public static EnergyBarManager Instance { get; private set; }
 
         [Header("Fill Rates")]
-        [SerializeField] private float passiveFillRate = 0.02f;   // Per second (very slow)
+        [SerializeField] private float passiveFillRate = 0.01f;   // Per second (~100s to fill passively)
         [SerializeField] private float solveBoostAmount = 0.12f;  // ~10-15% per solve
 
-        private float[] _fillAmounts = new float[2];
+        private float _fillAmount;
         private bool _active;
 
-        public float GetFillAmount(PlayerIndex player) => _fillAmounts[(int)player];
+        public float FillAmount => _fillAmount;
 
         private void Awake()
         {
@@ -42,19 +42,14 @@ namespace BellyFull
         {
             if (!_active) return;
 
-            // Passive fill for both players
-            for (int i = 0; i < 2; i++)
-            {
-                _fillAmounts[i] += passiveFillRate * Time.deltaTime;
-                _fillAmounts[i] = Mathf.Clamp01(_fillAmounts[i]);
-                GameEvents.EnergyBarChanged((PlayerIndex)i, _fillAmounts[i]);
+            _fillAmount += passiveFillRate * Time.deltaTime;
+            _fillAmount = Mathf.Clamp01(_fillAmount);
+            GameEvents.EnergyBarChanged(_fillAmount);
 
-                if (_fillAmounts[i] >= 1f)
-                {
-                    _active = false;
-                    GameEvents.EnergyBarFull((PlayerIndex)i);
-                    return;
-                }
+            if (_fillAmount >= 1f)
+            {
+                _active = false;
+                GameEvents.EnergyBarFull();
             }
         }
 
@@ -63,39 +58,33 @@ namespace BellyFull
             if (state == GameState.NormalPlay)
             {
                 _active = true;
+                if (_fillAmount > 0.5f)
+                    ResetBar();
             }
             else
             {
                 _active = false;
-            }
-
-            if (state == GameState.NormalPlay && _fillAmounts[0] > 0.5f)
-            {
-                // Post-blast reset
-                ResetBars();
             }
         }
 
         private void HandleEquationSolved(PlayerIndex player)
         {
             if (!_active) return;
-            _fillAmounts[(int)player] += solveBoostAmount;
-            _fillAmounts[(int)player] = Mathf.Clamp01(_fillAmounts[(int)player]);
-            GameEvents.EnergyBarChanged(player, _fillAmounts[(int)player]);
+            _fillAmount += solveBoostAmount;
+            _fillAmount = Mathf.Clamp01(_fillAmount);
+            GameEvents.EnergyBarChanged(_fillAmount);
 
-            if (_fillAmounts[(int)player] >= 1f)
+            if (_fillAmount >= 1f)
             {
                 _active = false;
-                GameEvents.EnergyBarFull(player);
+                GameEvents.EnergyBarFull();
             }
         }
 
-        public void ResetBars()
+        public void ResetBar()
         {
-            _fillAmounts[0] = 0f;
-            _fillAmounts[1] = 0f;
-            GameEvents.EnergyBarChanged(PlayerIndex.Player1, 0f);
-            GameEvents.EnergyBarChanged(PlayerIndex.Player2, 0f);
+            _fillAmount = 0f;
+            GameEvents.EnergyBarChanged(0f);
         }
     }
 }

@@ -4,66 +4,57 @@ namespace BellyFull
 {
     /// <summary>
     /// Controls the Symmetric Dodge System for the shared field.
-    /// With synchronized equations, ALL objects of the wrong type dodge ALL snakes.
-    /// Attach to the same GameObject as FieldManager.
+    /// Every frame, reads the current equation type from GameManager
+    /// and enforces the correct dodge/idle behavior on all field objects.
+    /// Addition: balls idle (edible), hedgehogs dodge (uncatchable)
+    /// Subtraction: hedgehogs idle (edible), balls dodge (uncatchable)
     /// </summary>
     [RequireComponent(typeof(FieldManager))]
     public class DodgeSystem : MonoBehaviour
     {
-        private void Start()
+        private void LateUpdate()
         {
-            GameEvents.OnGameStateChanged += HandleGameStateChanged;
-        }
+            if (GameManager.Instance == null) return;
 
-        private void OnDestroy()
-        {
-            GameEvents.OnGameStateChanged -= HandleGameStateChanged;
-        }
+            var state = GameManager.Instance.CurrentState;
+            if (state == GameState.BallBlast || state == GameState.PreBlast)
+                return;
+            if (state != GameState.NormalPlay)
+                return;
 
-        private void HandleGameStateChanged(GameState state)
-        {
-            if (state == GameState.NormalPlay)
+            // Check what each player currently needs — players may have different equation types
+            // Don't skip belly-ache snakes; their objects should stay Idle so they don't scatter
+            bool anyNeedsBalls = false;
+            bool anyNeedsHedgehogs = false;
+            for (int i = 0; i < 2; i++)
             {
-                // Apply dodge based on the synchronized equation type
-                ApplyDodgeBehavior(GameManager.Instance.CurrentEquationType);
+                var snake = GameManager.Instance.GetSnake((PlayerIndex)i);
+                if (snake == null) continue;
+                if (snake.CurrentEquationType == EquationType.Addition)
+                    anyNeedsBalls = true;
+                else
+                    anyNeedsHedgehogs = true;
             }
-            else if (state == GameState.BallBlast || state == GameState.PreBlast)
+
+            var objects = GetComponentsInChildren<FieldObject>(true);
+
+            foreach (var obj in objects)
             {
-                // During blast: no dodge — hedgehogs hidden, only balls on field
-                SetAllBehavior(FieldObjectType.Ball, DodgeBehavior.Idle);
+                if (obj.CurrentBehavior == DodgeBehavior.Frozen ||
+                    obj.CurrentBehavior == DodgeBehavior.Hidden)
+                    continue;
+
+                if (obj.ObjectType == FieldObjectType.Ball)
+                    obj.CurrentBehavior = anyNeedsBalls ? DodgeBehavior.Idle : DodgeBehavior.Dodging;
+                else if (obj.ObjectType == FieldObjectType.Hedgehog)
+                    obj.CurrentBehavior = anyNeedsHedgehogs ? DodgeBehavior.Idle : DodgeBehavior.Dodging;
             }
         }
 
         /// <summary>
-        /// Called when the synchronized equation type changes.
-        /// Both players share the same operation type, so dodge is global.
-        /// Addition: balls idle (edible), hedgehogs dodge (uncatchable)
-        /// Subtraction: hedgehogs idle (edible), balls dodge (uncatchable)
+        /// Kept for compatibility with MathSystem calls, but no longer needed
+        /// since LateUpdate enforces behavior every frame.
         /// </summary>
-        public void ApplyDodgeBehavior(EquationType equationType)
-        {
-            if (equationType == EquationType.Addition)
-            {
-                SetAllBehavior(FieldObjectType.Ball, DodgeBehavior.Idle);
-                SetAllBehavior(FieldObjectType.Hedgehog, DodgeBehavior.Dodging);
-            }
-            else
-            {
-                SetAllBehavior(FieldObjectType.Ball, DodgeBehavior.Dodging);
-                SetAllBehavior(FieldObjectType.Hedgehog, DodgeBehavior.Idle);
-            }
-
-            SetAllBehavior(FieldObjectType.Flower, DodgeBehavior.Idle);
-        }
-
-        private void SetAllBehavior(FieldObjectType type, DodgeBehavior behavior)
-        {
-            var objects = GetComponentsInChildren<FieldObject>(true);
-            foreach (var obj in objects)
-            {
-                if (obj.ObjectType == type)
-                    obj.CurrentBehavior = behavior;
-            }
-        }
+        public void ApplyDodgeBehavior(EquationType equationType) { }
     }
 }

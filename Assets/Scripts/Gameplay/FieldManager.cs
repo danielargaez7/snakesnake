@@ -15,17 +15,14 @@ namespace BellyFull
         [Header("Prefabs")]
         [SerializeField] private GameObject ballPrefab;
         [SerializeField] private GameObject hedgehogPrefab;
-        [SerializeField] private GameObject flowerPrefab;
 
         [Header("Spawn Counts")]
         [SerializeField] private int ballCount = 10;
         [SerializeField] private int hedgehogCount = 7;
-        [SerializeField] private int flowerCount = 6;
         [SerializeField] private int blastBallCount = 40;
 
         private List<FieldObject> _balls = new List<FieldObject>();
         private List<FieldObject> _hedgehogs = new List<FieldObject>();
-        private List<FieldObject> _flowers = new List<FieldObject>();
         private List<FieldObject> _blastBalls = new List<FieldObject>();
 
         public Rect FieldBounds => fieldBounds;
@@ -70,7 +67,6 @@ namespace BellyFull
             for (int i = targets.Count - 1; i >= 0; i--)
             {
                 if (targets[i] == null || !targets[i].gameObject.activeInHierarchy) continue;
-                if (targets[i].CurrentBehavior == DodgeBehavior.Dodging) continue;
                 if (targets[i].CurrentBehavior == DodgeBehavior.Frozen) continue;
 
                 float dist = Vector2.Distance(snakePos, targets[i].transform.position);
@@ -88,7 +84,7 @@ namespace BellyFull
 
         private List<FieldObject> GetEatableObjects(SnakeController snake)
         {
-            // With synchronized equations, both players have same equation type
+            // Each player eats the object type matching their current equation
             if (snake.CurrentEquationType == EquationType.Addition)
                 return _balls;
             else
@@ -99,7 +95,6 @@ namespace BellyFull
         {
             SpawnObjects(ballPrefab, ballCount, _balls);
             SpawnObjects(hedgehogPrefab, hedgehogCount, _hedgehogs);
-            SpawnObjects(flowerPrefab, flowerCount, _flowers);
         }
 
         private void SpawnObjects(GameObject prefab, int count, List<FieldObject> list)
@@ -146,8 +141,6 @@ namespace BellyFull
                 if (obj != null && Vector3.Distance(obj.transform.position, pos) < MinSpawnDistance) return true;
             foreach (var obj in _hedgehogs)
                 if (obj != null && Vector3.Distance(obj.transform.position, pos) < MinSpawnDistance) return true;
-            foreach (var obj in _flowers)
-                if (obj != null && Vector3.Distance(obj.transform.position, pos) < MinSpawnDistance) return true;
             return false;
         }
 
@@ -180,7 +173,6 @@ namespace BellyFull
             {
                 case GameState.PreBlast:
                     foreach (var h in _hedgehogs) h.SetHidden(true);
-                    foreach (var f in _flowers) f.SetHidden(true);
                     break;
 
                 case GameState.BallBlast:
@@ -190,7 +182,6 @@ namespace BellyFull
                 case GameState.NormalPlay:
                     ClearBlastBalls();
                     foreach (var h in _hedgehogs) h.SetHidden(false);
-                    foreach (var f in _flowers) f.SetHidden(false);
                     ReplenishField();
                     break;
             }
@@ -201,7 +192,6 @@ namespace BellyFull
             // Freeze all objects on the shared field when any player belly aches
             foreach (var b in _balls) b.SetFrozen(true);
             foreach (var h in _hedgehogs) h.SetFrozen(true);
-            foreach (var f in _flowers) f.SetFrozen(true);
         }
 
         private void HandleBellyAcheEnded(PlayerIndex player)
@@ -213,7 +203,6 @@ namespace BellyFull
 
             foreach (var b in _balls) b.SetFrozen(false);
             foreach (var h in _hedgehogs) h.SetFrozen(false);
-            foreach (var f in _flowers) f.SetFrozen(false);
         }
 
         private void SpawnBlastBalls()

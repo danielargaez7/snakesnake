@@ -130,9 +130,9 @@ namespace BellyFull
             WriteRow(p.ToString(), "crown_awarded", totalCrowns.ToString());
         }
 
-        private void LogBarFull(PlayerIndex p)
+        private void LogBarFull()
         {
-            WriteRow(p.ToString(), "energy_bar_full");
+            WriteRow("shared", "energy_bar_full");
         }
 
         private void LogGameWon(PlayerIndex p)
