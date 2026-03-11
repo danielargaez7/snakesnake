@@ -31,7 +31,7 @@ namespace BellyFull
         private void Start()
         {
             SubscribeEvents();
-            StartGame();
+            SetState(GameState.TitleScreen);
         }
 
         private void OnDestroy()
@@ -57,7 +57,9 @@ namespace BellyFull
             GameEvents.OnBallBlastEnded -= HandleBallBlastEnded;
         }
 
-        public void StartGame()
+        public void BeginWaitForPlayers() => SetState(GameState.WaitingForPlayers);
+        public void BeginCountdown()     => SetState(GameState.Countdown);
+        public void BeginPlay()
         {
             CrownCounts[0] = 0;
             CrownCounts[1] = 0;

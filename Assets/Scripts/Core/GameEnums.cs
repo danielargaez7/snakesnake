@@ -2,7 +2,9 @@ namespace BellyFull
 {
     public enum GameState
     {
+        TitleScreen,
         WaitingForPlayers,
+        Countdown,
         NormalPlay,
         BellyAche,
         PreBlast,       // Hedgehogs hiding, countdown
