@@ -13,14 +13,8 @@ namespace BellyFull
         [SerializeField] private SnakeController[] snakes = new SnakeController[2];
         [SerializeField] private FieldManager sharedField;
 
-        [Header("Post-Blast Reset")]
-        [SerializeField] private int postBlastBellyCount = 3;
-
-        public GameState CurrentState { get; private set; } = GameState.WaitingForPlayers;
+        public GameState CurrentState { get; private set; } = GameState.TitleScreen;
         public int[] CrownCounts { get; private set; } = new int[2];
-
-        // Synchronized equation type — both players always on same operation
-        public EquationType CurrentEquationType { get; private set; } = EquationType.Addition;
 
         private void Awake()
         {
@@ -30,35 +24,22 @@ namespace BellyFull
 
         private void Start()
         {
-            SubscribeEvents();
+            GameEvents.OnAllNumbersComplete += HandleAllNumbersComplete;
+            GameEvents.OnBallBlastEnded     += HandleBallBlastEnded;
             SetState(GameState.TitleScreen);
         }
 
         private void OnDestroy()
         {
-            UnsubscribeEvents();
+            GameEvents.OnAllNumbersComplete -= HandleAllNumbersComplete;
+            GameEvents.OnBallBlastEnded     -= HandleBallBlastEnded;
         }
 
-        private void SubscribeEvents()
-        {
-            GameEvents.OnEquationSolved += HandleEquationSolved;
-            GameEvents.OnBellyAcheStarted += HandleBellyAcheStarted;
-            GameEvents.OnBellyAcheEnded += HandleBellyAcheEnded;
-            GameEvents.OnEnergyBarFull += HandleEnergyBarFull;
-            GameEvents.OnBallBlastEnded += HandleBallBlastEnded;
-        }
-
-        private void UnsubscribeEvents()
-        {
-            GameEvents.OnEquationSolved -= HandleEquationSolved;
-            GameEvents.OnBellyAcheStarted -= HandleBellyAcheStarted;
-            GameEvents.OnBellyAcheEnded -= HandleBellyAcheEnded;
-            GameEvents.OnEnergyBarFull -= HandleEnergyBarFull;
-            GameEvents.OnBallBlastEnded -= HandleBallBlastEnded;
-        }
+        // ── State transitions ───────────────────────────────────────────────
 
         public void BeginWaitForPlayers() => SetState(GameState.WaitingForPlayers);
-        public void BeginCountdown()     => SetState(GameState.Countdown);
+        public void BeginCountdown()      => SetState(GameState.Countdown);
+
         public void BeginPlay()
         {
             CrownCounts[0] = 0;
@@ -73,30 +54,9 @@ namespace BellyFull
             Debug.Log($"[GameManager] State -> {newState}");
         }
 
-        /// <summary>
-        /// Sets the synchronized equation type for both players.
-        /// Called by MathSystem when generating new equations.
-        /// </summary>
-        public void SetEquationType(EquationType type)
-        {
-            CurrentEquationType = type;
-        }
+        // ── Event handlers ─────────────────────────────────────────────────
 
-        private void HandleEquationSolved(PlayerIndex player)
-        {
-            // Energy bar boost handled by EnergyBarManager
-        }
-
-        private void HandleBellyAcheStarted(PlayerIndex player, int overshoot)
-        {
-            // Per-player state — FieldManager freezes objects around that snake
-        }
-
-        private void HandleBellyAcheEnded(PlayerIndex player)
-        {
-        }
-
-        private void HandleEnergyBarFull()
+        private void HandleAllNumbersComplete(PlayerIndex player)
         {
             if (CurrentState != GameState.NormalPlay) return;
             SetState(GameState.PreBlast);
@@ -106,15 +66,11 @@ namespace BellyFull
         {
             SetState(GameState.CrownAward);
 
-            // Award crown (tie = no crown)
-            if (p1Count > p2Count)
-                AwardCrown(PlayerIndex.Player1);
-            else if (p2Count > p1Count)
-                AwardCrown(PlayerIndex.Player2);
-            else
-                Debug.Log("[GameManager] Tie — no crown awarded");
+            if (p1Count > p2Count)       AwardCrown(PlayerIndex.Player1);
+            else if (p2Count > p1Count)  AwardCrown(PlayerIndex.Player2);
+            else                         Debug.Log("[GameManager] Tie — no crown awarded");
 
-            // Check win condition
+            // Check win
             for (int i = 0; i < 2; i++)
             {
                 if (CrownCounts[i] >= crownsToWin)
@@ -125,14 +81,11 @@ namespace BellyFull
                 }
             }
 
-            // Reset bellies to post-blast count and resume
+            // Reset snakes and resume
             foreach (var snake in snakes)
-            {
-                if (snake != null)
-                    snake.ResetBelly(postBlastBellyCount);
-            }
+                if (snake != null) snake.ResetForRound();
 
-            Invoke(nameof(ResumeNormalPlay), 2.5f);
+            Invoke(nameof(ResumePlay), 2.5f);
         }
 
         private void AwardCrown(PlayerIndex player)
@@ -142,12 +95,14 @@ namespace BellyFull
             Debug.Log($"[GameManager] Crown -> {player} (total: {CrownCounts[(int)player]})");
         }
 
-        private void ResumeNormalPlay()
-        {
-            SetState(GameState.NormalPlay);
-        }
+        private void ResumePlay() => SetState(GameState.NormalPlay);
+
+        /// <summary>Called by BallBlastManager to properly update CurrentState to BallBlast.</summary>
+        public void EnterBallBlastState() => SetState(GameState.BallBlast);
+
+        // ── Accessors ──────────────────────────────────────────────────────
 
         public SnakeController GetSnake(PlayerIndex player) => snakes[(int)player];
-        public FieldManager GetField() => sharedField;
+        public FieldManager    GetField()                   => sharedField;
     }
 }

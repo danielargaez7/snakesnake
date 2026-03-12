@@ -1,12 +1,11 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace BellyFull
 {
     /// <summary>
-    /// Controls a single player's snake: movement tracking, belly count,
-    /// eating detection, belly ache state, and ball blast glow.
+    /// Controls one player's snake: token-following movement, catch hedgehog,
+    /// carry visual (ball shown at snake tip), deliver to number zone, Ball Blast glow.
     /// </summary>
     public class SnakeController : MonoBehaviour
     {
@@ -15,43 +14,37 @@ namespace BellyFull
 
         [Header("Movement")]
         [SerializeField] private float followSpeed = 12f;
-        [SerializeField] private float eatRadius = 0.8f;
+        [SerializeField] private float catchRadius = 0.7f;
 
-        [Header("Belly")]
-        [SerializeField] private int maxBellyCount = 12;
-
-        [Header("Belly Ache")]
-        [SerializeField] private float bellyAcheFreezeDuration = 2.5f;
-        [SerializeField] private float bellyAcheBallPopInterval = 0.4f;
-
-        [Header("Visual References")]
-        [SerializeField] private SpriteRenderer bodyRenderer;
-        [SerializeField] private Transform bellyContainer;
-        [SerializeField] private GameObject bellyBallPrefab;
+        [Header("Carry Visual")]
+        [Tooltip("Small circle/ball GameObject that appears under the snake tip when carrying")]
+        [SerializeField] private GameObject carriedBallVisual;
+        [Tooltip("Local offset from snake center to show carried ball (tip of snout)")]
+        [SerializeField] private Vector3 carryOffset = new Vector3(0f, 0.45f, 0f);
 
         [Header("Glow (Ball Blast)")]
+        [SerializeField] private SpriteRenderer bodyRenderer;
         [SerializeField] private Color glowColor = new Color(1f, 0.9f, 0.3f, 1f);
 
-        public PlayerIndex Player => playerIndex;
-        public int BellyCount { get; private set; }
-        public int TargetNumber { get; set; }
-        public EquationType CurrentEquationType { get; set; }
-        public bool IsInBellyAche { get; private set; }
-        public bool IsGlowing { get; private set; }
-        public int BlastEatCount { get; private set; }
+        public PlayerIndex Player    => playerIndex;
+        public bool IsCarrying       { get; private set; }
+        public bool IsGlowing        { get; private set; }
+        public int  BlastEatCount    { get; private set; }
+        public bool IsMoving         { get; private set; }
 
-        private List<GameObject> _bellyBallVisuals = new List<GameObject>();
         private Color _originalColor;
-        private bool _canEat = true;
         private SnakeTail _tail;
+        private Vector3 _prevPosition;
 
         private void Start()
         {
-            BellyCount = MathSystem.Instance != null ? MathSystem.Instance.StartingBellyCount : 3;
+            _prevPosition = transform.position;
             if (bodyRenderer != null)
                 _originalColor = bodyRenderer.color;
             _tail = GetComponent<SnakeTail>();
-            UpdateBellyVisuals();
+
+            if (carriedBallVisual != null)
+                carriedBallVisual.SetActive(false);
 
             GameEvents.OnGameStateChanged += HandleGameStateChanged;
         }
@@ -63,19 +56,30 @@ namespace BellyFull
 
         private void Update()
         {
-            if (IsInBellyAche) return;
+            Vector3 before = transform.position;
             FollowInput();
+            IsMoving = (transform.position - before).sqrMagnitude > 0.00001f;
+            _prevPosition = transform.position;
+
+            // Keep carried ball at snake tip in world space
+            if (IsCarrying && carriedBallVisual != null)
+            {
+                // carryOffset is in local space; transform it to world
+                carriedBallVisual.transform.position =
+                    transform.position + transform.rotation * carryOffset;
+                carriedBallVisual.transform.rotation = Quaternion.identity;
+            }
         }
 
         private void FollowInput()
         {
             if (TokenInputManager.Instance == null) return;
-
-            Vector2 targetPos = TokenInputManager.Instance.GetPlayerPosition(playerIndex);
             if (!TokenInputManager.Instance.IsPlayerActive(playerIndex)) return;
 
+            Vector2 targetPos = TokenInputManager.Instance.GetPlayerPosition(playerIndex);
             Vector3 current = transform.position;
-            Vector3 target = new Vector3(targetPos.x, targetPos.y, current.z);
+            Vector3 target  = new Vector3(targetPos.x, targetPos.y, current.z);
+
             transform.position = Vector3.Lerp(current, target, followSpeed * Time.deltaTime);
 
             // Face movement direction
@@ -88,91 +92,41 @@ namespace BellyFull
             }
         }
 
-        public bool TryEat(FieldObject obj)
+        /// <summary>Called by FieldManager when snake reaches an uncaught hedgehog.</summary>
+        public void CatchHedgehog()
         {
-            if (!_canEat || IsInBellyAche) return false;
-
-            GameState state = GameManager.Instance.CurrentState;
-
-            if (state == GameState.BallBlast)
-            {
-                if (obj.ObjectType == FieldObjectType.Ball)
-                {
-                    BlastEatCount++;
-                    GameEvents.ObjectEaten(playerIndex, FieldObjectType.Ball, BellyCount);
-                    return true;
-                }
-                return false;
-            }
-
-            if (state != GameState.NormalPlay) return false;
-
-            // Normal play — enforce belly cap
-            if (CurrentEquationType == EquationType.Addition && obj.ObjectType == FieldObjectType.Ball)
-            {
-                if (BellyCount >= maxBellyCount) return false; // At cap, can't eat more
-                BellyCount++;
-                GameEvents.ObjectEaten(playerIndex, FieldObjectType.Ball, BellyCount);
-                UpdateBellyVisuals();
-                CheckEquationProgress();
-                return true;
-            }
-            else if (CurrentEquationType == EquationType.Subtraction && obj.ObjectType == FieldObjectType.Hedgehog)
-            {
-                if (BellyCount <= 0) return false; // Can't go below 0
-                BellyCount--;
-                GameEvents.ObjectEaten(playerIndex, FieldObjectType.Hedgehog, BellyCount);
-                UpdateBellyVisuals();
-                CheckEquationProgress();
-                return true;
-            }
-
-            return false;
+            if (IsCarrying) return;
+            IsCarrying = true;
+            if (carriedBallVisual != null)
+                carriedBallVisual.SetActive(true);
+            GameEvents.HedgehogCaught(playerIndex);
         }
 
-        private void CheckEquationProgress()
+        /// <summary>Called by FieldManager when carrying snake reaches a specific hole.</summary>
+        public void DeliverBallToHole(int holeIndex)
         {
-            if (BellyCount == TargetNumber)
-            {
-                GameEvents.EquationSolved(playerIndex);
-            }
-            else if ((CurrentEquationType == EquationType.Addition && BellyCount > TargetNumber) ||
-                     (CurrentEquationType == EquationType.Subtraction && BellyCount < TargetNumber))
-            {
-                int overshoot = Mathf.Abs(BellyCount - TargetNumber);
-                StartCoroutine(BellyAcheRoutine(overshoot));
-            }
+            if (!IsCarrying) return;
+            IsCarrying = false;
+            if (carriedBallVisual != null)
+                carriedBallVisual.SetActive(false);
+            NumberManager.Instance?.ReceiveDeliveryToHole(playerIndex, holeIndex);
         }
 
-        private IEnumerator BellyAcheRoutine(int overshootAmount)
+        /// <summary>Called by FieldManager during Ball Blast to eat a blast ball.</summary>
+        public void EatBlastBall()
         {
-            IsInBellyAche = true;
-            _canEat = false;
-            GameEvents.BellyAcheStarted(playerIndex, overshootAmount);
+            BlastEatCount++;
+            GameEvents.BlastBallEaten(playerIndex);
+        }
 
-            if (bodyRenderer != null)
-                bodyRenderer.color = new Color(0.5f, 0.85f, 0.4f, _originalColor.a);
-
-            yield return new WaitForSeconds(bellyAcheFreezeDuration);
-
-            for (int i = 0; i < overshootAmount; i++)
-            {
-                if (CurrentEquationType == EquationType.Addition)
-                    BellyCount--;
-                else
-                    BellyCount++;
-
-                UpdateBellyVisuals();
-                yield return new WaitForSeconds(bellyAcheBallPopInterval);
-            }
-
+        public void ResetForRound()
+        {
+            IsCarrying = false;
+            BlastEatCount = 0;
+            if (carriedBallVisual != null)
+                carriedBallVisual.SetActive(false);
             if (bodyRenderer != null)
                 bodyRenderer.color = _originalColor;
-
-            IsInBellyAche = false;
-            _canEat = true;
-            GameEvents.BellyAcheEnded(playerIndex);
-            GameEvents.EquationSolved(playerIndex);
         }
 
         private void HandleGameStateChanged(GameState state)
@@ -185,60 +139,34 @@ namespace BellyFull
                     break;
                 case GameState.CrownAward:
                     SetGlow(false);
+                    // Drop any carried ball on blast end
+                    IsCarrying = false;
+                    if (carriedBallVisual != null) carriedBallVisual.SetActive(false);
                     break;
                 case GameState.NormalPlay:
-                    if (IsGlowing) SetGlow(false);
+                    SetGlow(false);
+                    IsCarrying = false;
+                    if (carriedBallVisual != null) carriedBallVisual.SetActive(false);
                     break;
             }
         }
 
-        /// <summary>
-        /// Resets belly to a specific count. Called post-blast (reset to 3).
-        /// </summary>
-        public void ResetBelly(int count)
+        private void SetGlow(bool on)
         {
-            BellyCount = Mathf.Clamp(count, 0, maxBellyCount);
-            BlastEatCount = 0;
-            IsInBellyAche = false;
-            _canEat = true;
-            IsGlowing = false;
+            IsGlowing = on;
             if (bodyRenderer != null)
-                bodyRenderer.color = _originalColor;
-            UpdateBellyVisuals();
+                bodyRenderer.color = on ? glowColor : _originalColor;
         }
 
-        private void SetGlow(bool glowing)
-        {
-            IsGlowing = glowing;
-            if (bodyRenderer != null)
-                bodyRenderer.color = glowing ? glowColor : _originalColor;
-        }
-
-        private void UpdateBellyVisuals()
-        {
-            // Update tail segment overlays
-            if (_tail != null)
-                _tail.SetFilledCount(BellyCount);
-        }
-
-        private void PositionBellyBall(GameObject ball, int index)
-        {
-            // Arrange balls in a compact cluster inside the body
-            float radius = 0.25f;
-            float angle = index * 137.5f * Mathf.Deg2Rad; // golden angle for even spread
-            float r = radius * Mathf.Sqrt((float)(index + 1) / maxBellyCount);
-            float x = Mathf.Cos(angle) * r;
-            float y = Mathf.Sin(angle) * r - 0.1f;
-            ball.transform.localPosition = new Vector3(x, y, 0);
-            ball.transform.localScale = Vector3.one * 0.3f;
-        }
-
-        public float GetEatRadius() => eatRadius;
+        public float GetCatchRadius() => catchRadius;
 
         private void OnDrawGizmosSelected()
         {
             Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(transform.position, eatRadius);
+            Gizmos.DrawWireSphere(transform.position, catchRadius);
+            // Show carry position
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireSphere(transform.position + transform.rotation * carryOffset, 0.2f);
         }
     }
 }

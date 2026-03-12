@@ -6,8 +6,7 @@ using UnityEngine;
 namespace BellyFull
 {
     /// <summary>
-    /// Captures all interaction events with timestamps, writes to CSV in real time,
-    /// and handles player progress persistence to JSON.
+    /// Logs all gameplay events to CSV for data analysis.
     /// </summary>
     public class DataLogger : MonoBehaviour
     {
@@ -17,7 +16,6 @@ namespace BellyFull
         [SerializeField] private bool enableLogging = true;
 
         private string _csvPath;
-        private string _progressPath;
         private string _sessionId;
         private StreamWriter _csvWriter;
 
@@ -28,7 +26,6 @@ namespace BellyFull
 
             _sessionId = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             _csvPath = Path.Combine(Application.persistentDataPath, "belly_full_log.csv");
-            _progressPath = Path.Combine(Application.persistentDataPath, "player_progress.json");
         }
 
         private void Start()
@@ -54,132 +51,71 @@ namespace BellyFull
 
             if (!fileExists)
             {
-                _csvWriter.WriteLine("session_id,player_id,timestamp,event_type,data1,data2,data3,data4");
+                _csvWriter.WriteLine("session_id,player_id,timestamp,event_type,data1,data2,data3");
             }
         }
 
         private void SubscribeEvents()
         {
-            GameEvents.OnObjectEaten += LogObjectEaten;
-            GameEvents.OnEquationGenerated += LogEquationGenerated;
-            GameEvents.OnEquationSolved += LogEquationSolved;
-            GameEvents.OnBellyAcheStarted += LogBellyAche;
-            GameEvents.OnDodgeAttempt += LogDodgeAttempt;
-            GameEvents.OnBallBlastEnded += LogBallBlast;
-            GameEvents.OnCrownAwarded += LogCrown;
-            GameEvents.OnEnergyBarFull += LogBarFull;
-            GameEvents.OnGameWon += LogGameWon;
+            GameEvents.OnHedgehogCaught    += LogHedgehogCaught;
+            GameEvents.OnHoleDelivered     += LogHoleDelivered;
+            GameEvents.OnNumberCompleted   += LogNumberCompleted;
+            GameEvents.OnNumberAdvanced    += LogNumberAdvanced;
+            GameEvents.OnAllNumbersComplete+= LogAllNumbersComplete;
+            GameEvents.OnBlastBallEaten    += LogBlastBallEaten;
+            GameEvents.OnBallBlastEnded    += LogBallBlastEnded;
+            GameEvents.OnCrownAwarded      += LogCrown;
+            GameEvents.OnGameWon           += LogGameWon;
         }
 
         private void UnsubscribeEvents()
         {
-            GameEvents.OnObjectEaten -= LogObjectEaten;
-            GameEvents.OnEquationGenerated -= LogEquationGenerated;
-            GameEvents.OnEquationSolved -= LogEquationSolved;
-            GameEvents.OnBellyAcheStarted -= LogBellyAche;
-            GameEvents.OnDodgeAttempt -= LogDodgeAttempt;
-            GameEvents.OnBallBlastEnded -= LogBallBlast;
-            GameEvents.OnCrownAwarded -= LogCrown;
-            GameEvents.OnEnergyBarFull -= LogBarFull;
-            GameEvents.OnGameWon -= LogGameWon;
+            GameEvents.OnHedgehogCaught    -= LogHedgehogCaught;
+            GameEvents.OnHoleDelivered     -= LogHoleDelivered;
+            GameEvents.OnNumberCompleted   -= LogNumberCompleted;
+            GameEvents.OnNumberAdvanced    -= LogNumberAdvanced;
+            GameEvents.OnAllNumbersComplete-= LogAllNumbersComplete;
+            GameEvents.OnBlastBallEaten    -= LogBlastBallEaten;
+            GameEvents.OnBallBlastEnded    -= LogBallBlastEnded;
+            GameEvents.OnCrownAwarded      -= LogCrown;
+            GameEvents.OnGameWon           -= LogGameWon;
         }
 
-        private void WriteRow(string playerId, string eventType, string d1 = "", string d2 = "", string d3 = "", string d4 = "")
+        private void WriteRow(string playerId, string eventType, string d1 = "", string d2 = "", string d3 = "")
         {
             if (_csvWriter == null) return;
             string timestamp = Time.time.ToString("F3");
-            _csvWriter.WriteLine($"{_sessionId},{playerId},{timestamp},{eventType},{d1},{d2},{d3},{d4}");
+            _csvWriter.WriteLine($"{_sessionId},{playerId},{timestamp},{eventType},{d1},{d2},{d3}");
             _csvWriter.Flush();
         }
 
         // --- Event Handlers ---
 
-        private void LogObjectEaten(PlayerIndex p, FieldObjectType type, int bellyCount)
-        {
-            WriteRow(p.ToString(), "object_eaten", type.ToString(), bellyCount.ToString());
-        }
+        private void LogHedgehogCaught(PlayerIndex p)
+            => WriteRow(p.ToString(), "hedgehog_caught");
 
-        private void LogEquationGenerated(PlayerIndex p, int current, int target, EquationType type)
-        {
-            WriteRow(p.ToString(), "equation_generated", type.ToString(), current.ToString(), target.ToString());
-        }
+        private void LogHoleDelivered(PlayerIndex p, int holeIdx, int filled, int total)
+            => WriteRow(p.ToString(), "hole_delivered", holeIdx.ToString(), filled.ToString(), total.ToString());
 
-        private void LogEquationSolved(PlayerIndex p)
-        {
-            var belly = MathSystem.Instance != null ? MathSystem.Instance.GetCurrentBelly(p).ToString() : "";
-            WriteRow(p.ToString(), "equation_solved", belly);
-        }
+        private void LogNumberCompleted(PlayerIndex p, int number)
+            => WriteRow(p.ToString(), "number_completed", number.ToString());
 
-        private void LogBellyAche(PlayerIndex p, int overshoot)
-        {
-            WriteRow(p.ToString(), "belly_ache", overshoot.ToString());
-        }
+        private void LogNumberAdvanced(PlayerIndex p, int newNumber)
+            => WriteRow(p.ToString(), "number_advanced", newNumber.ToString());
 
-        private void LogDodgeAttempt(PlayerIndex p, FieldObjectType type)
-        {
-            WriteRow(p.ToString(), "dodge_attempt", type.ToString());
-        }
+        private void LogAllNumbersComplete(PlayerIndex p)
+            => WriteRow(p.ToString(), "all_numbers_complete");
 
-        private void LogBallBlast(int p1Count, int p2Count)
-        {
-            WriteRow("both", "ball_blast_ended", p1Count.ToString(), p2Count.ToString());
-        }
+        private void LogBlastBallEaten(PlayerIndex p)
+            => WriteRow(p.ToString(), "blast_ball_eaten");
+
+        private void LogBallBlastEnded(int p1Count, int p2Count)
+            => WriteRow("both", "ball_blast_ended", p1Count.ToString(), p2Count.ToString());
 
         private void LogCrown(PlayerIndex p, int totalCrowns)
-        {
-            WriteRow(p.ToString(), "crown_awarded", totalCrowns.ToString());
-        }
-
-        private void LogBarFull()
-        {
-            WriteRow("shared", "energy_bar_full");
-        }
+            => WriteRow(p.ToString(), "crown_awarded", totalCrowns.ToString());
 
         private void LogGameWon(PlayerIndex p)
-        {
-            WriteRow(p.ToString(), "game_won");
-        }
-
-        // --- Player Progress (JSON) ---
-
-        [Serializable]
-        private class PlayerProgress
-        {
-            public string lastSessionId;
-            public int difficultyTier;
-            public int totalSessions;
-            public float lifetimeAccuracy;
-        }
-
-        public void SaveProgress()
-        {
-            var progress = new PlayerProgress
-            {
-                lastSessionId = _sessionId,
-                difficultyTier = (int)(MathSystem.Instance != null ? MathSystem.Instance.CurrentTier : DifficultyTier.Tier1),
-                totalSessions = 1, // TODO: increment from loaded
-                lifetimeAccuracy = MathSystem.Instance != null ? MathSystem.Instance.GetAccuracy() : 0f
-            };
-
-            string json = JsonUtility.ToJson(progress, true);
-            File.WriteAllText(_progressPath, json);
-            Debug.Log($"[DataLogger] Progress saved to {_progressPath}");
-        }
-
-        public DifficultyTier LoadTier()
-        {
-            if (!File.Exists(_progressPath)) return DifficultyTier.Tier1;
-
-            try
-            {
-                string json = File.ReadAllText(_progressPath);
-                var progress = JsonUtility.FromJson<PlayerProgress>(json);
-                return (DifficultyTier)progress.difficultyTier;
-            }
-            catch
-            {
-                return DifficultyTier.Tier1;
-            }
-        }
+            => WriteRow(p.ToString(), "game_won");
     }
 }

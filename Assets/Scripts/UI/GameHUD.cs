@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -6,235 +7,370 @@ using TMPro;
 namespace BellyFull
 {
     /// <summary>
-    /// HUD controller for one player on the shared screen.
-    /// P1 displays top-left, P2 displays top-right.
-    /// Shows equation (e.g. "3+2=2"), crowns, and blast UI.
-    /// One instance per player.
+    /// Per-player HUD.
+    /// Hole overlays are created as children of the NumberImage at the correct
+    /// sprite-UV positions so each hole has an exact world-space delivery target.
     /// </summary>
     public class GameHUD : MonoBehaviour
     {
+        // ── Static registry ───────────────────────────────────────────────
+        public static GameHUD Get(PlayerIndex player) => _registry[(int)player];
+        private static readonly GameHUD[] _registry = new GameHUD[2];
+
+        // ── Inspector ─────────────────────────────────────────────────────
         [Header("Identity")]
         [SerializeField] private PlayerIndex playerIndex;
 
-        [Header("Equation Display")]
-        [SerializeField] private TextMeshProUGUI equationText;
+        [Header("Number Display")]
+        [SerializeField] private Sprite[] numberSprites;
+        [SerializeField] private Image numberImage;
 
-        [Header("Crown Display")]
+        [Header("Hole Indicators (shown below the number)")]
+        [SerializeField] private Transform holesContainer;
+        [SerializeField] private float holeIndicatorRadius = 32f;
+        [SerializeField] private Color holeEmptyColor  = new Color(0.9f, 0.85f, 0.8f, 0.55f);
+        [SerializeField] private Color holeFilledColor = new Color(0.2f, 0.9f, 0.2f, 0.95f);
+
+        [Header("Completed Numbers Row")]
+        [SerializeField] private Transform completedRowContainer;
+
+        [Header("Crowns")]
         [SerializeField] private GameObject[] crownIcons = new GameObject[3];
 
-        [Header("Ball Blast UI")]
-        [SerializeField] private TextMeshProUGUI countdownText;
-        [SerializeField] private TextMeshProUGUI blastEatCountText;
+        [Header("Ball Blast")]
         [SerializeField] private GameObject blastOverlay;
+        [SerializeField] private TextMeshProUGUI blastEatCountText;
+        [SerializeField] private TextMeshProUGUI blastTimerText;
 
         [Header("Game Over")]
         [SerializeField] private GameObject winBanner;
 
-        // Tracked equation state
-        private int _startBelly;
-        private int _target;
-        private string _operator;
-        private int _operand;
-        private int _currentBelly;
-        private bool _celebrating;
+        // ── Runtime state ─────────────────────────────────────────────────
+        private readonly List<Image> _holeOverlays = new List<Image>();
+        private bool[] _holesFilledMask;
+        private int    _currentNumber;
 
-        private static readonly string[] CelebrationWords = { "YES!", "NICE!", "WOO!", "YAY!", "COOL!" };
+        // ── Unity lifecycle ───────────────────────────────────────────────
 
-        private void Start()
+        private void Awake()
         {
-            if (blastOverlay != null) blastOverlay.SetActive(false);
-            if (winBanner != null) winBanner.SetActive(false);
-            if (countdownText != null) countdownText.gameObject.SetActive(false);
-            foreach (var c in crownIcons)
-                if (c != null) c.SetActive(false);
-
-            GameEvents.OnEquationGenerated += HandleEquationGenerated;
-            GameEvents.OnObjectEaten += HandleObjectEaten;
-            GameEvents.OnCrownAwarded += HandleCrownAwarded;
-            GameEvents.OnBallBlastCountdown += HandleBlastCountdown;
-            GameEvents.OnBallBlastStarted += HandleBlastStarted;
-            GameEvents.OnBallBlastEnded += HandleBlastEnded;
-            GameEvents.OnGameWon += HandleGameWon;
-            GameEvents.OnGameStateChanged += HandleGameStateChanged;
+            _registry[(int)playerIndex] = this;
         }
 
         private void OnDestroy()
         {
-            GameEvents.OnEquationGenerated -= HandleEquationGenerated;
-            GameEvents.OnObjectEaten -= HandleObjectEaten;
-            GameEvents.OnCrownAwarded -= HandleCrownAwarded;
-            GameEvents.OnBallBlastCountdown -= HandleBlastCountdown;
-            GameEvents.OnBallBlastStarted -= HandleBlastStarted;
-            GameEvents.OnBallBlastEnded -= HandleBlastEnded;
-            GameEvents.OnGameWon -= HandleGameWon;
-            GameEvents.OnGameStateChanged -= HandleGameStateChanged;
+            if (_registry[(int)playerIndex] == this) _registry[(int)playerIndex] = null;
+        }
+
+        private void Start()
+        {
+            InitHUD();
+
+            GameEvents.OnNumberAdvanced   += HandleNumberAdvanced;
+            GameEvents.OnHoleDelivered    += HandleHoleDelivered;
+            GameEvents.OnNumberCompleted  += HandleNumberCompleted;
+            GameEvents.OnCrownAwarded     += HandleCrownAwarded;
+            GameEvents.OnBallBlastStarted += HandleBlastStarted;
+            GameEvents.OnBallBlastEnded   += HandleBlastEnded;
+            GameEvents.OnGameWon          += HandleGameWon;
+            GameEvents.OnGameStateChanged += HandleStateChanged;
         }
 
         private void Update()
         {
             if (BallBlastManager.Instance != null && BallBlastManager.Instance.IsBlasting)
             {
-                var snake = GameManager.Instance.GetSnake(playerIndex);
+                var snake = GameManager.Instance?.GetSnake(playerIndex);
                 if (snake != null && blastEatCountText != null)
-                {
                     blastEatCountText.text = snake.BlastEatCount.ToString();
-                }
+
+                if (blastTimerText != null)
+                    blastTimerText.text = Mathf.CeilToInt(BallBlastManager.Instance.BlastTimeRemaining).ToString();
             }
         }
 
-        private void HandleEquationGenerated(PlayerIndex player, int current, int target, EquationType type)
+        // ── Public API ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns the index of the nearest unfilled hole within world radius,
+        /// or -1 if none found / overlays not ready.
+        /// </summary>
+        public int GetNearestUnfilledHoleIndex(Vector3 worldPos, float radius)
+        {
+            int   best     = -1;
+            float bestDist = radius;
+            for (int i = 0; i < _holeOverlays.Count; i++)
+            {
+                if (_holeOverlays[i] == null) continue;
+                if (_holesFilledMask != null && i < _holesFilledMask.Length && _holesFilledMask[i]) continue;
+                float dist = Vector2.Distance(worldPos, OverlayToWorld(_holeOverlays[i].rectTransform));
+                if (dist < bestDist) { bestDist = dist; best = i; }
+            }
+            return best;
+        }
+
+        // ── Init ──────────────────────────────────────────────────────────
+
+        private void InitHUD()
+        {
+            if (blastOverlay != null) blastOverlay.SetActive(false);
+            if (winBanner    != null) winBanner.SetActive(false);
+            foreach (var c in crownIcons)
+                if (c != null) c.SetActive(false);
+
+            RefreshNumber(1, 0);
+        }
+
+        // ── Number / hole display ─────────────────────────────────────────
+
+        private void RefreshNumber(int number, int holesFilled)
+        {
+            _currentNumber  = number;
+            _holesFilledMask = new bool[number];
+
+            // Swap sprite
+            if (numberImage != null && numberSprites != null &&
+                number >= 1 && number <= numberSprites.Length &&
+                numberSprites[number - 1] != null)
+            {
+                numberImage.sprite = numberSprites[number - 1];
+                numberImage.gameObject.SetActive(true);
+            }
+
+            // Rebuild hole overlays
+            ClearHoleOverlays();
+            StartCoroutine(BuildHoleOverlays(number, holesFilled));
+        }
+
+        private void ClearHoleOverlays()
+        {
+            foreach (var img in _holeOverlays)
+                if (img != null) Destroy(img.gameObject);
+            _holeOverlays.Clear();
+        }
+
+        private IEnumerator BuildHoleOverlays(int number, int prefilledCount)
+        {
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+
+            if (numberImage == null || numberImage.sprite == null) yield break;
+
+            var uvs = (number >= 1 && number < HolePositionData.HoleUVs.Length)
+                      ? HolePositionData.HoleUVs[number] : null;
+            if (uvs == null) yield break;
+
+            var   rt      = numberImage.rectTransform;
+            float rectW   = rt.rect.width;
+            float rectH   = rt.rect.height;
+            float spriteW = numberImage.sprite.rect.width;
+            float spriteH = numberImage.sprite.rect.height;
+            float scale   = Mathf.Min(rectW / spriteW, rectH / spriteH);
+            float rendW   = spriteW * scale;
+            float rendH   = spriteH * scale;
+            float xOff    = (rectW - rendW) * 0.5f;
+            float yOff    = (rectH - rendH) * 0.5f;
+            float d       = holeIndicatorRadius * 2f;
+
+            for (int i = 0; i < uvs.Length; i++)
+            {
+                var go = new GameObject($"HoleSlot_{i}", typeof(RectTransform));
+                go.transform.SetParent(rt, false);
+
+                var holeRT       = go.GetComponent<RectTransform>();
+                holeRT.anchorMin = holeRT.anchorMax = new Vector2(0.5f, 0.5f);
+                holeRT.pivot     = new Vector2(0.5f, 0.5f);
+                holeRT.sizeDelta = new Vector2(d, d);
+
+                float localX = xOff + uvs[i].x * rendW;
+                float localY = yOff + (1f - uvs[i].y) * rendH;
+                holeRT.anchoredPosition = new Vector2(localX - rectW * 0.5f, localY - rectH * 0.5f);
+
+                var img   = go.AddComponent<Image>();
+                img.color = i < prefilledCount ? holeFilledColor : holeEmptyColor;
+                _holeOverlays.Add(img);
+            }
+        }
+
+        // ── Hole fill ─────────────────────────────────────────────────────
+
+        private void FillHoleOverlay(int index)
+        {
+            if (index < 0 || index >= _holeOverlays.Count) return;
+            if (_holeOverlays[index] == null) return;
+            _holeOverlays[index].color = holeFilledColor;
+            StartCoroutine(PopScale(_holeOverlays[index].transform));
+        }
+
+        private IEnumerator PopScale(Transform t)
+        {
+            float elapsed = 0f;
+            while (elapsed < 0.25f)
+            {
+                elapsed += Time.deltaTime;
+                float s = 1f + 0.5f * Mathf.Sin(elapsed / 0.25f * Mathf.PI);
+                t.localScale = Vector3.one * s;
+                yield return null;
+            }
+            t.localScale = Vector3.one;
+        }
+
+        // ── World position helper ─────────────────────────────────────────
+
+        private static Vector3 OverlayToWorld(RectTransform rt)
+        {
+            // Screen Space Overlay: RectTransform.position is in screen pixels
+            Vector3 sp    = rt.position;
+            float   depth = Mathf.Abs(Camera.main.transform.position.z);
+            Vector3 world = Camera.main.ScreenToWorldPoint(new Vector3(sp.x, sp.y, depth));
+            world.z = 0f;
+            return world;
+        }
+
+        // ── Event handlers ────────────────────────────────────────────────
+
+        private void HandleNumberAdvanced(PlayerIndex player, int newNumber)
         {
             if (player != playerIndex) return;
-
-            _startBelly = current;
-            _target = target;
-            _currentBelly = current;
-            _operand = Mathf.Abs(target - current);
-            _operator = type == EquationType.Addition ? "+" : "-";
-
-            if (!_celebrating)
-                UpdateEquationDisplay();
+            RefreshNumber(newNumber, 0);
         }
 
-        private void HandleObjectEaten(PlayerIndex player, FieldObjectType type, int bellyCount)
+        private void HandleHoleDelivered(PlayerIndex player, int holeIndex, int filled, int total)
         {
             if (player != playerIndex) return;
-            _currentBelly = bellyCount;
-
-            if (_celebrating) return;
-
-            UpdateEquationDisplay();
-
-            // Check if just solved
-            if (_currentBelly == _target)
-            {
-                StartCoroutine(SolveCelebration());
-            }
+            if (_holesFilledMask != null && holeIndex < _holesFilledMask.Length)
+                _holesFilledMask[holeIndex] = true;
+            FillHoleOverlay(holeIndex);
         }
 
-        private void UpdateEquationDisplay()
-        {
-            if (equationText == null) return;
-
-            bool correct = _currentBelly == _target;
-            string answerColor = correct ? "#00CC00" : "#CC0000";
-
-            equationText.text = $"{_startBelly}{_operator}{_operand}=<color={answerColor}><size=150%>{_currentBelly}</size></color>";
-        }
-
-        private IEnumerator SolveCelebration()
-        {
-            _celebrating = true;
-
-            if (equationText == null) { _celebrating = false; yield break; }
-
-            var rt = equationText.GetComponent<RectTransform>();
-            Vector3 originalScale = rt != null ? rt.localScale : Vector3.one;
-
-            // Flash the correct answer green
-            equationText.text = $"<color=#00CC00><size=150%>{_startBelly}{_operator}{_operand}={_target}</size></color>";
-
-            // Scale punch up
-            if (rt != null)
-            {
-                float elapsed = 0f;
-                float punchDuration = 0.2f;
-                while (elapsed < punchDuration)
-                {
-                    elapsed += Time.deltaTime;
-                    float t = elapsed / punchDuration;
-                    float scale = 1f + 0.4f * Mathf.Sin(t * Mathf.PI);
-                    rt.localScale = originalScale * scale;
-                    yield return null;
-                }
-            }
-
-            // Show fun word
-            string word = CelebrationWords[Random.Range(0, CelebrationWords.Length)];
-            equationText.text = $"<color=#FFD700><size=200%>{word}</size></color>";
-
-            // Bounce the word
-            if (rt != null)
-            {
-                float elapsed = 0f;
-                float bounceDuration = 0.5f;
-                while (elapsed < bounceDuration)
-                {
-                    elapsed += Time.deltaTime;
-                    float t = elapsed / bounceDuration;
-                    float scale = 1f + 0.2f * Mathf.Sin(t * Mathf.PI * 2f) * (1f - t);
-                    rt.localScale = originalScale * scale;
-                    yield return null;
-                }
-            }
-
-            // Brief pause on the word
-            yield return new WaitForSeconds(0.3f);
-
-            // Restore scale and show new equation
-            if (rt != null) rt.localScale = originalScale;
-            _celebrating = false;
-            UpdateEquationDisplay();
-        }
-
-        private void HandleCrownAwarded(PlayerIndex player, int totalCrowns)
+        private void HandleNumberCompleted(PlayerIndex player, int number)
         {
             if (player != playerIndex) return;
-            for (int i = 0; i < crownIcons.Length && i < totalCrowns; i++)
-            {
-                if (crownIcons[i] != null)
-                    crownIcons[i].SetActive(true);
-            }
+            StartCoroutine(NumberCompleteCelebration());
+            AddCompletedBadge(number);
         }
 
-        private void HandleBlastCountdown()
+        private void AddCompletedBadge(int number)
         {
-            if (countdownText != null)
-            {
-                countdownText.gameObject.SetActive(true);
-                StartCoroutine(CountdownRoutine());
-            }
+            if (completedRowContainer == null) return;
+            if (numberSprites == null || number < 1 || number > numberSprites.Length) return;
+
+            var go = new GameObject($"Badge_{number}", typeof(RectTransform));
+            go.transform.SetParent(completedRowContainer, false);
+
+            var rt = go.GetComponent<RectTransform>();
+            rt.sizeDelta = new Vector2(42f, 56f);
+
+            var img = go.AddComponent<Image>();
+            img.sprite = numberSprites[number - 1];
+            img.preserveAspect = true;
+
+            StartCoroutine(PopInBadge(go.transform));
         }
 
-        private IEnumerator CountdownRoutine()
+        private IEnumerator PopInBadge(Transform t)
         {
-            countdownText.text = "3";
-            yield return new WaitForSeconds(1f);
-            countdownText.text = "2";
-            yield return new WaitForSeconds(1f);
-            countdownText.text = "1";
-            yield return new WaitForSeconds(1f);
-            countdownText.gameObject.SetActive(false);
+            t.localScale = Vector3.zero;
+            float elapsed = 0f;
+            while (elapsed < 0.35f)
+            {
+                elapsed += Time.deltaTime;
+                float p = elapsed / 0.35f;
+                // EaseOutBack
+                const float c1 = 1.70158f;
+                const float c3 = c1 + 1f;
+                float s = 1f + c3 * Mathf.Pow(p - 1f, 3f) + c1 * Mathf.Pow(p - 1f, 2f);
+                t.localScale = Vector3.one * Mathf.Max(0f, s);
+                yield return null;
+            }
+            t.localScale = Vector3.one;
+        }
+
+        private IEnumerator FadeOutCompletedRow()
+        {
+            if (completedRowContainer == null) yield break;
+            var cg = completedRowContainer.GetComponent<CanvasGroup>();
+            if (cg == null) cg = completedRowContainer.gameObject.AddComponent<CanvasGroup>();
+            float t = 0f;
+            while (t < 0.4f)
+            {
+                t += Time.deltaTime;
+                cg.alpha = 1f - t / 0.4f;
+                yield return null;
+            }
+            cg.alpha = 0f;
+            foreach (Transform child in completedRowContainer)
+                Destroy(child.gameObject);
+        }
+
+        private IEnumerator NumberCompleteCelebration()
+        {
+            if (numberImage == null) yield break;
+
+            Vector3 orig = numberImage.transform.localScale;
+            float elapsed = 0f;
+            while (elapsed < 0.5f)
+            {
+                elapsed += Time.deltaTime;
+                float s = 1f + 0.35f * Mathf.Sin(elapsed / 0.5f * Mathf.PI);
+                numberImage.transform.localScale = orig * s;
+                yield return null;
+            }
+            numberImage.transform.localScale = orig;
+        }
+
+        private void HandleCrownAwarded(PlayerIndex player, int total)
+        {
+            if (player != playerIndex) return;
+            for (int i = 0; i < crownIcons.Length && i < total; i++)
+                if (crownIcons[i] != null) crownIcons[i].SetActive(true);
         }
 
         private void HandleBlastStarted()
         {
             if (blastOverlay != null) blastOverlay.SetActive(true);
-            if (blastEatCountText != null)
-            {
-                blastEatCountText.gameObject.SetActive(true);
-                blastEatCountText.text = "0";
-            }
+            if (blastEatCountText != null) { blastEatCountText.gameObject.SetActive(true); blastEatCountText.text = "0"; }
         }
 
-        private void HandleBlastEnded(int p1Count, int p2Count)
+        private void HandleBlastEnded(int p1, int p2)
         {
-            if (blastOverlay != null) blastOverlay.SetActive(false);
+            if (blastOverlay      != null) blastOverlay.SetActive(false);
             if (blastEatCountText != null) blastEatCountText.gameObject.SetActive(false);
         }
 
         private void HandleGameWon(PlayerIndex winner)
         {
-            if (winner == playerIndex && winBanner != null)
-                winBanner.SetActive(true);
+            if (winner == playerIndex && winBanner != null) winBanner.SetActive(true);
         }
 
-        private void HandleGameStateChanged(GameState state)
+        private void HandleStateChanged(GameState state)
         {
-            if (state == GameState.NormalPlay)
+            if (state == GameState.PreBlast)
             {
-                if (blastOverlay != null) blastOverlay.SetActive(false);
+                // Hide number and holes — BlastUI takes over centre display
+                if (numberImage != null) numberImage.gameObject.SetActive(false);
+                ClearHoleOverlays();
+                StartCoroutine(FadeOutCompletedRow());
+                return;
             }
+
+            if (state != GameState.NormalPlay) return;
+            if (blastOverlay != null) blastOverlay.SetActive(false);
+
+            // Reset completed row alpha and clear badges for new round
+            if (completedRowContainer != null)
+            {
+                var cg = completedRowContainer.GetComponent<CanvasGroup>();
+                if (cg != null) cg.alpha = 1f;
+                foreach (Transform child in completedRowContainer)
+                    Destroy(child.gameObject);
+            }
+
+            int crowns = GameManager.Instance != null ? GameManager.Instance.CrownCounts[(int)playerIndex] : 0;
+            foreach (var c in crownIcons) if (c != null) c.SetActive(false);
+            for (int i = 0; i < crownIcons.Length && i < crowns; i++)
+                if (crownIcons[i] != null) crownIcons[i].SetActive(true);
+            RefreshNumber(1, 0);
         }
     }
 }

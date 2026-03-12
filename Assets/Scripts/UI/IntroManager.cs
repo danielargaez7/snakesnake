@@ -144,21 +144,67 @@ namespace BellyFull
 
         // ==================== helpers ====================
 
-        private IEnumerator WiggleSnake(Transform t, float duration)
+        private IEnumerator WiggleSnake(Transform root, float duration)
         {
-            if (t == null) yield break;
-            float elapsed = 0f;
-            float speed   = 14f;
-            float amount  = 0.13f;
-            Vector3 origin = t.localPosition;
+            if (root == null) yield break;
+
+            // Find belly container (holds the stacked belly ball segments)
+            Transform bellyContainer = null;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                if (root.GetChild(i).name.Contains("BellyContainer"))
+                {
+                    bellyContainer = root.GetChild(i);
+                    break;
+                }
+            }
+
+            float elapsed   = 0f;
+            float speed     = 8f;    // wave frequency
+            float maxAngle  = 14f;   // head max tilt degrees
+            float phaseStep = 0.55f; // radian delay per segment down the body
+
+            Vector3 rootOrigin = root.localEulerAngles;
+
+            // Cache segment origins so we can restore them
+            Transform[] segments = bellyContainer != null
+                ? GetChildren(bellyContainer)
+                : new Transform[0];
+            Vector3[] segOrigins = new Vector3[segments.Length];
+            for (int i = 0; i < segments.Length; i++)
+                segOrigins[i] = segments[i].localEulerAngles;
 
             while (elapsed < duration)
             {
-                t.localPosition = origin + new Vector3(Mathf.Sin(elapsed * speed) * amount, 0f, 0f);
+                // Head: sine wave
+                float headAngle = Mathf.Sin(elapsed * speed) * maxAngle;
+                root.localEulerAngles = rootOrigin + new Vector3(0f, 0f, headAngle);
+
+                // Each belly segment: same wave but phase-delayed & slightly dampened
+                for (int i = 0; i < segments.Length; i++)
+                {
+                    float phase     = (i + 1) * phaseStep;
+                    float dampen    = Mathf.Lerp(1f, 0.35f, (float)i / Mathf.Max(1, segments.Length - 1));
+                    float segAngle  = Mathf.Sin(elapsed * speed - phase) * maxAngle * dampen;
+                    segments[i].localEulerAngles = segOrigins[i] + new Vector3(0f, 0f, segAngle);
+                }
+
                 elapsed += Time.deltaTime;
                 yield return null;
             }
-            t.localPosition = origin;
+
+            // Restore all rotations
+            root.localEulerAngles = rootOrigin;
+            for (int i = 0; i < segments.Length; i++)
+                segments[i].localEulerAngles = segOrigins[i];
+        }
+
+        private static Transform[] GetChildren(Transform parent)
+        {
+            var children = new Transform[parent.childCount];
+            for (int i = 0; i < parent.childCount; i++)
+                children[i] = parent.GetChild(i);
+            return children;
         }
 
         private void UpdateReadyGlows(bool p1, bool p2)

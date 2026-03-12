@@ -12,8 +12,8 @@ namespace BellyFull
         public static BallBlastManager Instance { get; private set; }
 
         [Header("Timing")]
-        [SerializeField] private float preBlastDuration = 2f;    // Hedgehogs hiding
-        [SerializeField] private float countdownDuration = 3f;    // 3-2-1
+        [SerializeField] private float preBlastDuration = 1.0f;   // Hedgehogs hide + #5 centre animation
+        [SerializeField] private float countdownDuration = 0.2f;   // Brief pause before blast
         [SerializeField] private float blastDuration = 8f;        // The frenzy
 
         public float BlastTimeRemaining { get; private set; }
@@ -54,8 +54,8 @@ namespace BellyFull
             Debug.Log("[BallBlast] 3... 2... 1...");
             yield return new WaitForSeconds(countdownDuration);
 
-            // Phase 3: BLAST!
-            GameEvents.GameStateChanged(GameState.BallBlast);
+            // Phase 3: BLAST! — go through GameManager so CurrentState is properly updated
+            GameManager.Instance?.EnterBallBlastState();
             GameEvents.BallBlastStarted();
             IsBlasting = true;
             BlastTimeRemaining = blastDuration;
