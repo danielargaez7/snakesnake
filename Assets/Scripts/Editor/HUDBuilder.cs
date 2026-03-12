@@ -52,6 +52,7 @@ public class HUDBuilder : Editor
         DestroyChild(canvas, "HUD_P1");
         DestroyChild(canvas, "HUD_P2");
         DestroyChild(canvas, "BlastUI");
+        DestroyChild(canvas, "ThanksScreen");
 
         // Build both panels
         var hud1GO = BuildPlayerHUD(canvas.transform, "HUD_P1", PlayerIndex.Player1,
@@ -62,10 +63,13 @@ public class HUDBuilder : Editor
         // Build center blast UI (countdown + confetti)
         BuildBlastUI(canvas.transform, numberSprites);
 
+        // Build thanks-for-playing end screen
+        BuildThanksScreen(canvas.transform);
+
         EditorSceneManager.MarkSceneDirty(
             UnityEngine.SceneManagement.SceneManager.GetActiveScene());
 
-        Debug.Log("[HUDBuilder] Done! HUD_P1, HUD_P2, and BlastUI built and wired.");
+        Debug.Log("[HUDBuilder] Done! HUD_P1, HUD_P2, BlastUI, and ThanksScreen built and wired.");
     }
 
     // ── Per-player panel ─────────────────────────────────────────────────────
@@ -161,7 +165,7 @@ public class HUDBuilder : Editor
         bRT.anchorMin = Vector2.zero; bRT.anchorMax = Vector2.one;
         bRT.offsetMin = bRT.offsetMax = Vector2.zero;
         var bBg = blastOverlay.AddComponent<Image>();
-        bBg.color = new Color(1f, 0.5f, 0f, 0.25f);
+        bBg.color = new Color(0f, 0f, 0f, 0f); // fully transparent — no background panel
 
         var blastCountGO = MakeText(blastOverlay.transform, "BlastCount", "0", 96,
                                      new Color(1f, 0.9f, 0.1f));
@@ -295,6 +299,32 @@ public class HUDBuilder : Editor
         }
 
         so.ApplyModifiedProperties();
+    }
+
+    // ── Thanks screen ────────────────────────────────────────────────────────
+
+    static void BuildThanksScreen(Transform canvas)
+    {
+        var root = MakeRect(canvas, "ThanksScreen");
+        var rootRT = root.GetComponent<RectTransform>();
+        rootRT.anchorMin = Vector2.zero;
+        rootRT.anchorMax = Vector2.one;
+        rootRT.offsetMin = rootRT.offsetMax = Vector2.zero;
+
+        // Full-screen image — assign your sprite in the Inspector
+        var img = root.AddComponent<Image>();
+        img.color = Color.white;
+
+        // CanvasGroup for fade-in
+        root.AddComponent<CanvasGroup>();
+
+        // Wire ThanksScreen script
+        var ts  = root.AddComponent<BellyFull.ThanksScreen>();
+        var so  = new SerializedObject(ts);
+        so.FindProperty("slideImage").objectReferenceValue = img;
+        so.ApplyModifiedProperties();
+        // NOTE: stays active so Start() can subscribe to GameOver event;
+        //       CanvasGroup hides it visually until triggered.
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
