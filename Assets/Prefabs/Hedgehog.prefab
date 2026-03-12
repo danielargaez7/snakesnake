@@ -101,9 +101,9 @@ MonoBehaviour:
   objectType: 0
   wanderSpeed: 1.8
   wanderTargetChangeInterval: 2.5
-  fleeSpeed: 5.5
-  fleeRadius: 2.2
-  rubberBandFleeRadius: 3.8
+  fleeSpeed: 0.6
+  fleeRadius: 1.4
+  rubberBandFleeRadius: 2.4
   separationRadius: 0.7
   separationForce: 3
 --- !u!95 &8111320491083925964

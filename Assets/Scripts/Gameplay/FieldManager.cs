@@ -11,7 +11,8 @@ namespace BellyFull
     public class FieldManager : MonoBehaviour
     {
         [Header("Field Bounds (world space)")]
-        [SerializeField] private Rect fieldBounds = new Rect(-7f, -4f, 14f, 8f);
+        [SerializeField] private Rect fieldBounds      = new Rect(-7f,  -4f,  14f,  8f);
+        [SerializeField] private Rect blastSpawnBounds = new Rect(-8f, -4.8f, 16f, 9.2f); // wider for blast balls
 
         [Header("Prefabs")]
         [SerializeField] private GameObject hedgehogPrefab;
@@ -177,7 +178,7 @@ namespace BellyFull
             if (ballPrefab == null) yield break;
             for (int i = 0; i < blastBallCount; i++)
             {
-                var go  = Instantiate(ballPrefab, GetRandomFieldPos(), Quaternion.identity, transform);
+                var go  = Instantiate(ballPrefab, GetRandomBlastPos(), Quaternion.identity, transform);
                 var obj = go.GetComponent<FieldObject>();
                 if (obj != null)
                 {
@@ -234,6 +235,13 @@ namespace BellyFull
             // Keep away from delivery zones (top strip)
             float x = Random.Range(fieldBounds.xMin + 0.5f, fieldBounds.xMax - 0.5f);
             float y = Random.Range(fieldBounds.yMin + 0.5f, fieldBounds.yMax - 2.5f); // avoid top
+            return new Vector3(x, y, 0);
+        }
+
+        private Vector3 GetRandomBlastPos()
+        {
+            float x = Random.Range(blastSpawnBounds.xMin, blastSpawnBounds.xMax);
+            float y = Random.Range(blastSpawnBounds.yMin, blastSpawnBounds.yMax);
             return new Vector3(x, y, 0);
         }
 

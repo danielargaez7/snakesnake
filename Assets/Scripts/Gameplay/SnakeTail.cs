@@ -16,6 +16,10 @@ namespace BellyFull
         [SerializeField] private float segmentSpacing = 0.85f;
         [SerializeField] private float segmentScale = 0.45f;
         [SerializeField] private Color segmentColor = Color.white;
+        [Tooltip("Sprite used for body segments (overrides prefab sprite)")]
+        [SerializeField] private Sprite bodySprite;
+        [Tooltip("Sprite used for the tail tip (last segment)")]
+        [SerializeField] private Sprite tailTipSprite;
 
         [Header("Belly Overlay")]
         [SerializeField] private Sprite bellyFullSprite;
@@ -55,7 +59,15 @@ namespace BellyFull
                 GameObject seg = Instantiate(segmentPrefab, transform.position, Quaternion.identity);
                 seg.transform.localScale = Vector3.one * segmentScale;
                 var sr = seg.GetComponent<SpriteRenderer>();
-                if (sr != null) sr.color = segmentColor;
+                if (sr != null)
+                {
+                    bool isTip = (i == segmentCount - 1);
+                    if (isTip && tailTipSprite != null)
+                        sr.sprite = tailTipSprite;
+                    else if (bodySprite != null)
+                        sr.sprite = bodySprite;
+                    sr.color = segmentColor;
+                }
 
                 // Create belly overlay child (hidden by default)
                 var overlayObj = new GameObject("BellyOverlay");

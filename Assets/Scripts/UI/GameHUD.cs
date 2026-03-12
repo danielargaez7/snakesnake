@@ -24,6 +24,7 @@ namespace BellyFull
         [Header("Number Display")]
         [SerializeField] private Sprite[] numberSprites;
         [SerializeField] private Image numberImage;
+        [SerializeField] private Color numberTint = Color.white;
 
         [Header("Hole Indicators (shown below the number)")]
         [SerializeField] private Transform holesContainer;
@@ -134,6 +135,7 @@ namespace BellyFull
                 numberSprites[number - 1] != null)
             {
                 numberImage.sprite = numberSprites[number - 1];
+                numberImage.color  = numberTint;
                 numberImage.gameObject.SetActive(true);
             }
 

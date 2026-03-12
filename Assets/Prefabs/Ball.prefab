@@ -100,3 +100,6 @@ MonoBehaviour:
   objectType: 0
   dodgeSpeed: 6
   dodgeDetectRadius: 2.5
+  fleeSpeed: 0.6
+  fleeRadius: 1.4
+  rubberBandFleeRadius: 1
