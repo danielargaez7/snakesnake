@@ -84,9 +84,8 @@ namespace BellyFull
         {
             if (mainCamera == null) return Vector2.zero;
 
-            // Board SDK gives screen coords with origin top-left, Y down
-            // Unity screen coords have origin bottom-left, Y up
-            Vector2 unityScreenPos = new Vector2(screenPos.x, Screen.height - screenPos.y);
+            // Board SDK gives screen coords already in Unity-compatible orientation
+            Vector2 unityScreenPos = new Vector2(screenPos.x, screenPos.y);
             Vector3 worldPos = mainCamera.ScreenToWorldPoint(new Vector3(unityScreenPos.x, unityScreenPos.y, mainCamera.nearClipPlane + 1f));
             return new Vector2(worldPos.x, worldPos.y);
         }

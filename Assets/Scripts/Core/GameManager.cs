@@ -37,6 +37,13 @@ namespace BellyFull
 
         // ── State transitions ───────────────────────────────────────────────
 
+        public void BeginTitleScreen()
+        {
+            CrownCounts[0] = CrownCounts[1] = 0;
+            foreach (var snake in snakes)
+                if (snake != null) snake.ResetForRound();
+            SetState(GameState.TitleScreen);
+        }
         public void BeginWaitForPlayers() => SetState(GameState.WaitingForPlayers);
         public void BeginCountdown()      => SetState(GameState.Countdown);
 

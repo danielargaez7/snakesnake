@@ -76,11 +76,16 @@ namespace BellyFull
 
         private IEnumerator TitleScreenRoutine()
         {
-            // Wait for any key (editor) or touch (device)
+            // Wait for any key (editor) or touch (device — supports both old and new Input System)
             while (true)
             {
                 if (UnityEngine.Input.anyKeyDown) break;
                 if (UnityEngine.Input.touchCount > 0) break;
+                var ts = UnityEngine.InputSystem.Touchscreen.current;
+                if (ts != null && ts.primaryTouch.press.wasPressedThisFrame) break;
+                // Also check token placement as an advance trigger
+                if (TokenInputManager.Instance != null &&
+                    (TokenInputManager.Instance.Player1Active || TokenInputManager.Instance.Player2Active)) break;
                 yield return null;
             }
             GameManager.Instance.BeginWaitForPlayers();

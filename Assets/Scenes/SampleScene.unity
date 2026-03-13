@@ -835,10 +835,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   segmentPrefab: {fileID: 6799769575590467956, guid: 2a4b488a1348d43c4bde205adbbb1350, type: 3}
-  segmentCount: 5
-  segmentSpacing: 0.85
-  segmentScale: 0.85
+  segmentCount: 9
+  segmentSpacing: 0.42
+  segmentScale: 0.28
   segmentColor: {r: 0.55, g: 0.78, b: 0.95, a: 1}
+  bodySprite: {fileID: 21300000, guid: 515fad14eb5304987918292d4cca73dc, type: 3}
+  tailTipSprite: {fileID: 21300000, guid: 5d1ccbc7fa74e459ba0d3b5dbc18016a, type: 3}
   bellyFullSprite: {fileID: 21300000, guid: 67f294620af9449f68711da80f5cc7a5, type: 3}
   historyStepDistance: 0.05
   rotationSmoothing: 10
@@ -1442,10 +1444,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   segmentPrefab: {fileID: 6799769575590467956, guid: ac29f5eef640d435ca2908b101b829d5, type: 3}
-  segmentCount: 5
-  segmentSpacing: 0.85
-  segmentScale: 0.85
+  segmentCount: 9
+  segmentSpacing: 0.42
+  segmentScale: 0.28
   segmentColor: {r: 0.56, g: 0.82, b: 0.42, a: 1}
+  bodySprite: {fileID: 21300000, guid: a94bec30105264794bfbddea24f4da0c, type: 3}
+  tailTipSprite: {fileID: 21300000, guid: 92909f96fa5d44769962afe980ce8f59, type: 3}
   bellyFullSprite: {fileID: 21300000, guid: d9096e184c1d94717b0df558979701f8, type: 3}
   historyStepDistance: 0.05
   rotationSmoothing: 10
@@ -1804,6 +1808,7 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 5e9f889ae84be4a6e967fbe387d0765b, type: 3}
   - {fileID: 21300000, guid: 127edba02c1ad4582a55ee96edfeb438, type: 3}
   numberImage: {fileID: 1871371613}
+  numberTint: {r: 0.35, g: 0.65, b: 1, a: 1}
   holesContainer: {fileID: 1944598528}
   holeIndicatorRadius: 32
   holeEmptyColor: {r: 0.9, g: 0.85, b: 0.8, a: 0.55}
@@ -3378,6 +3383,7 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 5e9f889ae84be4a6e967fbe387d0765b, type: 3}
   - {fileID: 21300000, guid: 127edba02c1ad4582a55ee96edfeb438, type: 3}
   numberImage: {fileID: 771301875}
+  numberTint: {r: 0.35, g: 0.85, b: 0.35, a: 1}
   holesContainer: {fileID: 1946960766}
   holeIndicatorRadius: 32
   holeEmptyColor: {r: 0.9, g: 0.85, b: 0.8, a: 0.55}

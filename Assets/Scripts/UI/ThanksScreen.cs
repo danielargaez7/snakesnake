@@ -71,8 +71,8 @@ namespace BellyFull
 
             Hide();
 
-            // Return to title / front page
-            GameManager.Instance?.BeginWaitForPlayers();
+            // Return to title screen for a fresh game
+            GameManager.Instance?.BeginTitleScreen();
         }
 
         private void Show()
